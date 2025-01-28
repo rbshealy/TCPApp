@@ -1,0 +1,3 @@
+./dependecies/pytelicam_v1_1_1_win64/wheel_files/pytelicam-1.1.1-cp312-cp312-win_amd64.whl
+opencv-python
+numpy
