@@ -31,9 +31,9 @@ class Recorder:
         self.displaying = False  # Flag to indicate if camera display is active
         self.display_windows = []  # List to hold display window names
         self.filenames = []
-        self.width = 2448
-        self.height = 2048
-        self.fps = 25
+        self.width = 1224
+        self.height = 1024
+        self.fps = 100
 
         # Initialize the camera system using the U3V interface
         self.cam_system = pytelicam.get_camera_system(int(pytelicam.CameraType.U3v))
@@ -61,14 +61,15 @@ class Recorder:
             res = device.cam_control.set_trigger_mode(False)  # Disable hardware trigger mode for continuous acquisition
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception("Can't set TriggerMode.")  # Raise an exception if unable to set trigger mode
-            """
-            res = self.cam_devices[i].cam_control.set_width(self.width)  # Get the width of the camera feed
+
+            res = self.cam_devices[i].cam_control.set_width(self.width)  # set the width of the camera feed
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set width. {res}")
-            res = self.cam_devices[i].cam_control.set_height(self.height)  # Get the height of the camera feed
+            res = self.cam_devices[i].cam_control.set_height(self.height)  # set the height of the camera feed
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set height. {res}")
-            
+
+            """
             res = self.cam_devices[i].cam_control.set_acquisition_frame_rate(self.fps)  # Get the frame rate of the camera
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't get fps. {res}")
@@ -104,7 +105,7 @@ class Recorder:
                             frame = cv2.resize(frame, dsize=(320, 240))
                             cv2.imshow(window, frame)  # Display the frame in the corresponding window
                         else:
-                            #print(f"Grab error! status = {image_data.status} camera: {i}")
+                            print(f"Grab error! status = {image_data.status} camera: {i}")
                             break
             cv2.waitKey(1)
 
