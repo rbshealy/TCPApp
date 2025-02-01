@@ -82,7 +82,7 @@ class Recorder:
         if self.recording:
             print("Already recording!")  # Inform the user if already recording
             return
-        
+
         try:
             self.writers = []  # Reset the writers list
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Get the current timestamp for file naming
@@ -99,7 +99,7 @@ class Recorder:
             self.thread = threading.Thread(target=self._capture_frames)  # Create a thread to capture frames
             self.thread.start()  # Start the frame capturing thread
             self.start_display()  # Start displaying the camera feeds
-            print("Recording started")  # Inform the user that recording has started
+            print("Recording started...")  # Inform the user that recording has started
             
         except Exception as e:
             print(f"Failed to start recording: {str(e)}")  # Handle any exceptions that occur during recording initialization
@@ -145,8 +145,10 @@ class Recorder:
                 if os.path.exists(writer.filename):
                     os.remove(writer.filename)  # Delete the temporary video file if not saving
         
+        for writer in self.writers:
+            print("Recording stopped" + (f" and saved in {writer.filename}" if save else " (discarded)"))  # Inform the user of the recording status
+        
         self.writers = []  # Reset the writers list
-        print("Recording stopped" + (" and saved" if save else " (discarded)"))  # Inform the user of the recording status
 
     def cleanup(self):
         # Cleanup resources and terminate the camera system
@@ -159,16 +161,16 @@ class Recorder:
         cv2.destroyAllWindows()  # Close all OpenCV windows
         print("Finished.")  # Inform the user that cleanup is complete
 
-try:
-    if __name__ == "__main__":
+
+if __name__ == "__main__":
+    try:
         recorder = Recorder()  # Create an instance of the Recorder class
-        print("Camera Control REPL\nCommands: start, stop, exit")  # Display available commands
+        print("Camera Control REPL...\nCommands: start, stop, exit")  # Display available commands
         while True:
             cmd = input("> ").lower().strip()  # Get user input
             
             if cmd == "start":
                 recorder.start_recording()  # Start recording when the user enters "start"
-                recorder.start_display()  # Start displaying the camera feeds
             elif cmd == "stop":
                 if recorder.recording:
                     while True:
@@ -187,6 +189,6 @@ try:
                 break  # Exit the loop
             else:
                 print("Invalid command")  # Inform the user of invalid input
-except Exception as e:
-    print(f"An error occurred: {str(e)}")  # Handle any exceptions that occur during execution
-    recorder.cleanup()  # Ensure cleanup is called on error
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")  # Handle any exceptions that occur during execution
+        recorder.cleanup()  # Ensure cleanup is called on error
