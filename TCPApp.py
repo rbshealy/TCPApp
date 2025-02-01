@@ -63,9 +63,6 @@ class Recorder:
 
         self.displaying = True  # Set the displaying flag to true
         self.display_windows = [f"Camera {i}" for i in range(self.cam_num)]  # Create window names for each camera
-        for window in self.display_windows:
-            cv2.namedWindow(window, cv2.WINDOW_NORMAL)  # Create a named window for each camera
-            cv2.resizeWindow(window, 320, 240)  # Resize the window to 320x240 pixels
             
         self.display_thread = threading.Thread(target=self._update_displays)  # Create a thread to update displays
         self.display_thread.start()  # Start the display thread
@@ -75,15 +72,17 @@ class Recorder:
         # Continuously update the display windows with frames from the cameras
         while self.displaying and not self.stop_event.is_set():
             for i, window in enumerate(self.display_windows):
-                res = self.cam_system.wait_for_signal(self.receive_signals[i], 0)  # Wait for a signal from the camera
+                res = self.cam_system.wait_for_signal(self.receive_signals[i], 1)  # Wait for a signal from the camera
                 if res == pytelicam.CamApiStatus.Success:
                     with self.cam_devices[i].cam_stream.get_current_buffered_image() as image_data:
                         if image_data.status == pytelicam.CamApiStatus.Success:
                             frame = image_data.get_ndarray(pytelicam.OutputImageType.Bgr24)  # Get the current frame as a NumPy array
+                            frame = cv2.resize(frame, dsize=(320, 240))
                             cv2.imshow(window, frame)  # Display the frame in the corresponding window
                         else:
-                            print(f"Grab error! status = {image_data.status}")
+                            print(f"Grab error! status = {image_data.status} camera: {i}")
                             break
+            cv2.waitKey(1)
 
     def start_recording(self):
         # Start recording video from the cameras
@@ -176,9 +175,7 @@ class Recorder:
             if self.receive_signals[i] is not None:
                 self.cam_system.close_signal(self.receive_signals[i])
 
-        cam_system.terminate()
-
-        cv2.destroyAllWindows()
+        self.cam_system.terminate()
 
         print("Finished.")
 
@@ -206,10 +203,8 @@ if __name__ == "__main__":
             elif cmd == "exit":
                 if recorder.recording:
                     recorder.stop_recording(False)  # Stop recording without saving if exiting
-                recorder.cleanup()  # Cleanup resources before exiting
                 break  # Exit the loop
             elif cmd == "debug_exit":
-                recorder.cleanup()  # Cleanup resources before exiting
                 break  # Exit the loop
             else:
                 print("Invalid command")  # Inform the user of invalid input
