@@ -18,6 +18,8 @@ import cv2  # Import OpenCV for image processing
 import pytelicam  # Import the pytelicam SDK for camera control
 import threading  # Import threading for concurrent execution
 from datetime import datetime  # Import datetime for timestamping recordings
+from math import floor
+import traceback
 
 class Recorder:
     def __init__(self):
@@ -89,11 +91,11 @@ class Recorder:
             self.writers = []  # Reset the writers list
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Get the current timestamp for file naming
             for i in range(self.cam_num):
-                width = self.cam_devices[i].cam_control.get_sensor_width()  # Get the width of the camera feed
-                height = self.cam_devices[i].cam_control.get_sensor_height()  # Get the height of the camera feed
-                status, fps = self.cam_devices[i].cam_control.get_acquisition_frame_rate()  # Get the frame rate of the camera
-                if status != pytelicam.CamApiStatus.Success:
-                    raise Exception(f"Can't get frame rate of camera {i + 1}")  # Raise an exception if unable to set trigger mode
+                _,width = self.cam_devices[i].cam_control.get_sensor_width()  # Get the width of the camera feed
+                _,height = self.cam_devices[i].cam_control.get_sensor_height()  # Get the height of the camera feed
+                _,fps = self.cam_devices[i].cam_control.get_acquisition_frame_rate()  # Get the frame rate of the camera
+                if fps != floor(fps):
+                    fps = floor(fps)
                 filename = f"recording_cam{i}_{timestamp}.mp4"  # Create a filename for the recording
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec for the video writer
                 self.writers.append(cv2.VideoWriter(filename, fourcc, fps, (width, height)))  # Create a video writer for each camera
@@ -107,6 +109,7 @@ class Recorder:
             
         except Exception as e:
             print(f"Failed to start recording: {str(e)}")  # Handle any exceptions that occur during recording initialization
+            print(traceback.format_exc())
             self.writers = []  # Reset the writers list
             
     def _capture_frames(self):
@@ -191,14 +194,19 @@ if __name__ == "__main__":
                     recorder.stop_recording(False)  # Stop recording without saving if exiting
                 recorder.cleanup()  # Cleanup resources before exiting
                 break  # Exit the loop
+            elif cmd == "debug_exit":
+                recorder.cleanup()  # Cleanup resources before exiting
+                break  # Exit the loop
             else:
                 print("Invalid command")  # Inform the user of invalid input
     except pytelicam.PytelicamError as teli_exception:
         print("An error occurred!")
         print(f"  message : {teli_exception.message}")
         print(f"  status  : {teli_exception.status}")
+        print(traceback.format_exc())
     except Exception as e:
         print(f"An error occurred: {str(e)}")  # Handle any exceptions that occur during execution
+        print(traceback.format_exc())
     finally:
         if 'recorder' in locals():
             recorder.cleanup()  # Ensure cleanup is called on error
