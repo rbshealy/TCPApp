@@ -23,6 +23,13 @@ import traceback
 
 class Recorder:
     def __init__(self):
+        self.recording = False  # Flag to indicate if recording is in progress
+        self.writers = []  # List to hold video writer objects
+        self.stop_event = threading.Event()  # Event to signal stopping of threads
+        self.thread = None  # Thread for capturing frames
+        self.displaying = False  # Flag to indicate if camera display is active
+        self.display_windows = []  # List to hold display window names
+
         # Initialize the camera system using the U3V interface
         self.cam_system = pytelicam.get_camera_system(int(pytelicam.CameraType.U3v))
         self.cam_devices = []  # List to hold camera device objects
@@ -46,12 +53,7 @@ class Recorder:
             device.cam_stream.open(self.receive_signals[i])  # Open the camera stream
             device.cam_stream.start()  # Start the camera stream
 
-        self.recording = False  # Flag to indicate if recording is in progress
-        self.writers = []  # List to hold video writer objects
-        self.stop_event = threading.Event()  # Event to signal stopping of threads
-        self.thread = None  # Thread for capturing frames
-        self.displaying = False  # Flag to indicate if camera display is active
-        self.display_windows = []  # List to hold display window names
+        self.start_display()  # Start displaying the camera feeds
 
     def start_display(self):
         # Start displaying the camera feeds in separate windows
@@ -73,13 +75,15 @@ class Recorder:
         # Continuously update the display windows with frames from the cameras
         while self.displaying and not self.stop_event.is_set():
             for i, window in enumerate(self.display_windows):
-                res = self.cam_system.wait_for_signal(self.receive_signals[i], 100)  # Wait for a signal from the camera
+                res = self.cam_system.wait_for_signal(self.receive_signals[i], 0)  # Wait for a signal from the camera
                 if res == pytelicam.CamApiStatus.Success:
                     with self.cam_devices[i].cam_stream.get_current_buffered_image() as image_data:
                         if image_data.status == pytelicam.CamApiStatus.Success:
                             frame = image_data.get_ndarray(pytelicam.OutputImageType.Bgr24)  # Get the current frame as a NumPy array
                             cv2.imshow(window, frame)  # Display the frame in the corresponding window
-                            cv2.waitKey(1)  # Wait for a short period to allow the window to update
+                        else:
+                            print(f"Grab error! status = {image_data.status}")
+                            break
 
     def start_recording(self):
         # Start recording video from the cameras
@@ -94,7 +98,7 @@ class Recorder:
                 _,width = self.cam_devices[i].cam_control.get_sensor_width()  # Get the width of the camera feed
                 _,height = self.cam_devices[i].cam_control.get_sensor_height()  # Get the height of the camera feed
                 _,fps = self.cam_devices[i].cam_control.get_acquisition_frame_rate()  # Get the frame rate of the camera
-                if fps != floor(fps):
+                if fps != floor(fps): #need to fix this
                     fps = floor(fps)
                 filename = f"recording_cam{i}_{timestamp}.mp4"  # Create a filename for the recording
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec for the video writer
@@ -104,7 +108,6 @@ class Recorder:
             self.stop_event.clear()  # Clear the stop event
             self.thread = threading.Thread(target=self._capture_frames)  # Create a thread to capture frames
             self.thread.start()  # Start the frame capturing thread
-            self.start_display()  # Start displaying the camera feeds
             print("Recording started...")  # Inform the user that recording has started
             
         except Exception as e:
@@ -116,12 +119,15 @@ class Recorder:
         # Capture frames from the cameras while recording
         while self.recording and not self.stop_event.is_set():
             for i in range(self.cam_num):
-                res = self.cam_system.wait_for_signal(self.receive_signals[i], 100)  # Wait for a signal from the camera
+                res = self.cam_system.wait_for_signal(self.receive_signals[i], 0)  # Wait for a signal from the camera
                 if res == pytelicam.CamApiStatus.Success:
                     with self.cam_devices[i].cam_stream.get_current_buffered_image() as image_data:
                         if image_data.status == pytelicam.CamApiStatus.Success:
                             frame = image_data.get_ndarray(pytelicam.OutputImageType.Bgr24)  # Get the current frame as a NumPy array
                             self.writers[i].write(frame)  # Write the frame to the corresponding video file
+                        else:
+                            print(f"Grab error! status = {image_data.status}")
+                            break
 
     def stop_display(self):
         # Stop displaying the camera feeds
@@ -141,8 +147,6 @@ class Recorder:
         if self.thread.is_alive():
             self.thread.join()  # Wait for the thread to finish
         
-        self.stop_display()  # Stop displaying the camera feeds
-        
         for writer in self.writers:
             writer.release()  # Release the video writer resources
         
@@ -158,15 +162,25 @@ class Recorder:
         self.writers = []  # Reset the writers list
 
     def cleanup(self):
+        self.stop_display()  # Stop displaying the camera feeds
         # Cleanup resources and terminate the camera system
-        for device in self.cam_devices:
-            if device.is_open:
-                device.cam_stream.stop()  # Stop the camera stream
-                device.cam_stream.close()  # Close the camera stream
-                device.close()  # Close the camera device
-        self.cam_system.terminate()  # Terminate the camera system
-        cv2.destroyAllWindows()  # Close all OpenCV windows
-        print("Finished.")  # Inform the user that cleanup is complete
+        for i in range(self.cam_num):
+            if self.cam_devices[i] is not None:
+                if self.cam_devices[i].cam_stream.is_open:
+                    self.cam_devices[i].cam_stream.stop()
+                    self.cam_devices[i].cam_stream.close()
+
+                if self.cam_devices[i].is_open:
+                    self.cam_devices[i].close()
+
+            if self.receive_signals[i] is not None:
+                self.cam_system.close_signal(self.receive_signals[i])
+
+        cam_system.terminate()
+
+        cv2.destroyAllWindows()
+
+        print("Finished.")
 
 
 if __name__ == "__main__":
