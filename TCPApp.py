@@ -6,8 +6,10 @@ It captures live video streams from multiple connected cameras and displays
 them using OpenCV. The application handles camera initialization, stream configuration,
 image acquisition, and cleanup.
 
-Controls:
-- ESC or 'q' key exits the application
+Commands:
+- "start" starts recording
+- "stop" stops recording
+- "exit" exits the application
 - Displays resized 320x240 preview windows
 """
 import sys  # Import system-specific parameters and functions
@@ -34,7 +36,7 @@ class Recorder:
             self.receive_signals.append(self.cam_system.create_signal())
         
         # Open each camera device and configure it
-        for device in self.cam_devices:
+        for i,device in enumerate(self.cam_devices):
             device.open()  # Open the camera device
             res = device.cam_control.set_trigger_mode(False)  # Disable hardware trigger mode for continuous acquisition
             if res != pytelicam.CamApiStatus.Success:
@@ -87,9 +89,11 @@ class Recorder:
             self.writers = []  # Reset the writers list
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Get the current timestamp for file naming
             for i in range(self.cam_num):
-                width = self.cam_devices[i].get_feature_value("Width")  # Get the width of the camera feed
-                height = self.cam_devices[i].get_feature_value("Height")  # Get the height of the camera feed
-                fps = self.cam_devices[i].get_feature_value("AcquisitionFrameRate")  # Get the frame rate of the camera
+                width = self.cam_devices[i].cam_control.get_sensor_width()  # Get the width of the camera feed
+                height = self.cam_devices[i].cam_control.get_sensor_height()  # Get the height of the camera feed
+                status, fps = self.cam_devices[i].cam_control.get_acquisition_frame_rate()  # Get the frame rate of the camera
+                if status != pytelicam.CamApiStatus.Success:
+                    raise Exception(f"Can't get frame rate of camera {i + 1}")  # Raise an exception if unable to set trigger mode
                 filename = f"recording_cam{i}_{timestamp}.mp4"  # Create a filename for the recording
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec for the video writer
                 self.writers.append(cv2.VideoWriter(filename, fourcc, fps, (width, height)))  # Create a video writer for each camera
@@ -189,6 +193,12 @@ if __name__ == "__main__":
                 break  # Exit the loop
             else:
                 print("Invalid command")  # Inform the user of invalid input
+    except pytelicam.PytelicamError as teli_exception:
+        print("An error occurred!")
+        print(f"  message : {teli_exception.message}")
+        print(f"  status  : {teli_exception.status}")
     except Exception as e:
         print(f"An error occurred: {str(e)}")  # Handle any exceptions that occur during execution
-        recorder.cleanup()  # Ensure cleanup is called on error
+    finally:
+        if 'recorder' in locals():
+            recorder.cleanup()  # Ensure cleanup is called on error
