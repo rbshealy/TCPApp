@@ -20,6 +20,7 @@ import threading  # Import threading for concurrent execution
 from datetime import datetime  # Import datetime for timestamping recordings
 from math import floor
 import traceback
+import os  # Import os for file operations
 
 class Recorder:
     def __init__(self):
@@ -29,6 +30,10 @@ class Recorder:
         self.thread = None  # Thread for capturing frames
         self.displaying = False  # Flag to indicate if camera display is active
         self.display_windows = []  # List to hold display window names
+        self.filenames = []
+        self.width = 2448
+        self.height = 2048
+        self.fps = 25
 
         # Initialize the camera system using the U3V interface
         self.cam_system = pytelicam.get_camera_system(int(pytelicam.CameraType.U3v))
@@ -47,9 +52,28 @@ class Recorder:
         # Open each camera device and configure it
         for i,device in enumerate(self.cam_devices):
             device.open()  # Open the camera device
+
+            """
+            _, mi, ma, __ = device.cam_control.get_width_min_max()
+            print((mi, ma))
+            """
+
             res = device.cam_control.set_trigger_mode(False)  # Disable hardware trigger mode for continuous acquisition
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception("Can't set TriggerMode.")  # Raise an exception if unable to set trigger mode
+            """
+            res = self.cam_devices[i].cam_control.set_width(self.width)  # Get the width of the camera feed
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set width. {res}")
+            res = self.cam_devices[i].cam_control.set_height(self.height)  # Get the height of the camera feed
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set height. {res}")
+            
+            res = self.cam_devices[i].cam_control.set_acquisition_frame_rate(self.fps)  # Get the frame rate of the camera
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't get fps. {res}")
+            """
+
             device.cam_stream.open(self.receive_signals[i])  # Open the camera stream
             device.cam_stream.start()  # Start the camera stream
 
@@ -72,7 +96,7 @@ class Recorder:
         # Continuously update the display windows with frames from the cameras
         while self.displaying and not self.stop_event.is_set():
             for i, window in enumerate(self.display_windows):
-                res = self.cam_system.wait_for_signal(self.receive_signals[i], 1)  # Wait for a signal from the camera
+                res = self.cam_system.wait_for_signal(self.receive_signals[i], 0)  # Wait for a signal from the camera
                 if res == pytelicam.CamApiStatus.Success:
                     with self.cam_devices[i].cam_stream.get_current_buffered_image() as image_data:
                         if image_data.status == pytelicam.CamApiStatus.Success:
@@ -80,11 +104,11 @@ class Recorder:
                             frame = cv2.resize(frame, dsize=(320, 240))
                             cv2.imshow(window, frame)  # Display the frame in the corresponding window
                         else:
-                            print(f"Grab error! status = {image_data.status} camera: {i}")
+                            #print(f"Grab error! status = {image_data.status} camera: {i}")
                             break
             cv2.waitKey(1)
 
-    def start_recording(self):
+    def start_recording(self, w =2448, h =2048):
         # Start recording video from the cameras
         if self.recording:
             print("Already recording!")  # Inform the user if already recording
@@ -94,14 +118,11 @@ class Recorder:
             self.writers = []  # Reset the writers list
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Get the current timestamp for file naming
             for i in range(self.cam_num):
-                _,width = self.cam_devices[i].cam_control.get_sensor_width()  # Get the width of the camera feed
-                _,height = self.cam_devices[i].cam_control.get_sensor_height()  # Get the height of the camera feed
-                _,fps = self.cam_devices[i].cam_control.get_acquisition_frame_rate()  # Get the frame rate of the camera
-                if fps != floor(fps): #need to fix this
-                    fps = floor(fps)
-                filename = f"recording_cam{i}_{timestamp}.mp4"  # Create a filename for the recording
+                filename = f"output/recording_cam{i}_{timestamp}.mp4"  # Create a filename for the recording
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Define the codec for the video writer
-                self.writers.append(cv2.VideoWriter(filename, fourcc, fps, (width, height)))  # Create a video writer for each camera
+                self.writers.append(cv2.VideoWriter(filename, fourcc, self.fps, (self.width, self.height)))  # Create a video writer for each camera
+                self.filenames.append(filename)
+
             
             self.recording = True  # Set the recording flag to true
             self.stop_event.clear()  # Clear the stop event
@@ -124,15 +145,12 @@ class Recorder:
                         if image_data.status == pytelicam.CamApiStatus.Success:
                             frame = image_data.get_ndarray(pytelicam.OutputImageType.Bgr24)  # Get the current frame as a NumPy array
                             self.writers[i].write(frame)  # Write the frame to the corresponding video file
-                        else:
-                            print(f"Grab error! status = {image_data.status}")
-                            break
 
     def stop_display(self):
         # Stop displaying the camera feeds
         if self.displaying:
             self.displaying = False  # Set the displaying flag to false
-            self.stop_event.set()  # Signal to stop the display thread
+            #self.stop_event.set()  # Signal to stop the display thread
             if self.display_thread.is_alive():
                 self.display_thread.join()  # Wait for the display thread to finish
             for window in self.display_windows:
@@ -142,7 +160,7 @@ class Recorder:
 
     def stop_recording(self, save=True):
         self.recording = False  # Set the recording flag to false
-        self.stop_event.set()  # Signal to stop the thread
+        #self.stop_event.set()  # Signal to stop the thread
         if self.thread.is_alive():
             self.thread.join()  # Wait for the thread to finish
         
@@ -150,13 +168,12 @@ class Recorder:
             writer.release()  # Release the video writer resources
         
         if not save:
-            import os  # Import os for file operations
-            for writer in self.writers:
-                if os.path.exists(writer.filename):
-                    os.remove(writer.filename)  # Delete the temporary video file if not saving
+            for file in self.filenames:
+                if os.path.exists(file):
+                    os.remove(file)  # Delete the temporary video file if not saving
         
-        for writer in self.writers:
-            print("Recording stopped" + (f" and saved in {writer.filename}" if save else " (discarded)"))  # Inform the user of the recording status
+        for file in self.filenames:
+            print("Recording stopped" + (f" and saved in {file}" if save else " (discarded)"))  # Inform the user of the recording status
         
         self.writers = []  # Reset the writers list
 
@@ -179,6 +196,45 @@ class Recorder:
 
         print("Finished.")
 
+def handle_save(r):
+    while True:
+        save = input("Save recording? (yes/no): ").lower().strip()  # Ask the user if they want to save the recording
+        if save in ["yes", "no"]:
+            r.stop_recording(save == "yes")  # Stop recording and save if the user confirms
+            break
+        else:
+            print("Please enter 'yes' or 'no'.")  # Prompt for valid input
+
+def handle_start_recording(r):
+    w, h = 2448, 2048
+    while True:
+        default = input("Would you like the default width and height for the recording? (yes/no): ").lower().strip()
+        if default in ["yes", "no"]:
+            r.start_recording()
+            break
+        else:
+            print("Please enter 'yes' or 'no'.")
+
+
+
+def del_input(cmd):
+    if cmd == "start":
+        recorder.start_recording()  # Start recording when the user enters "start"
+    elif cmd == "stop":
+        if recorder.recording:
+            handle_save(recorder)
+        else:
+            print("Not recording")  # Inform the user if not currently recording
+    elif cmd == "exit":
+        if recorder.recording:
+            handle_save(recorder)
+        return False
+    elif cmd == "debug_exit":
+        return False
+    else:
+        print("Invalid command")  # Inform the user of invalid input
+
+    return True
 
 if __name__ == "__main__":
     try:
@@ -186,28 +242,8 @@ if __name__ == "__main__":
         print("Camera Control REPL...\nCommands: start, stop, exit")  # Display available commands
         while True:
             cmd = input("> ").lower().strip()  # Get user input
-            
-            if cmd == "start":
-                recorder.start_recording()  # Start recording when the user enters "start"
-            elif cmd == "stop":
-                if recorder.recording:
-                    while True:
-                        save = input("Save recording? (yes/no): ").lower().strip()  # Ask the user if they want to save the recording
-                        if save in ["yes", "no"]:
-                            recorder.stop_recording(save == "yes")  # Stop recording and save if the user confirms
-                            break
-                        else:
-                            print("Please enter 'yes' or 'no'.")  # Prompt for valid input
-                else:
-                    print("Not recording")  # Inform the user if not currently recording
-            elif cmd == "exit":
-                if recorder.recording:
-                    recorder.stop_recording(False)  # Stop recording without saving if exiting
-                break  # Exit the loop
-            elif cmd == "debug_exit":
-                break  # Exit the loop
-            else:
-                print("Invalid command")  # Inform the user of invalid input
+            if del_input(cmd) == False: break
+
     except pytelicam.PytelicamError as teli_exception:
         print("An error occurred!")
         print(f"  message : {teli_exception.message}")
@@ -219,3 +255,4 @@ if __name__ == "__main__":
     finally:
         if 'recorder' in locals():
             recorder.cleanup()  # Ensure cleanup is called on error
+
