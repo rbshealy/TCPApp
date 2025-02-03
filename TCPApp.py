@@ -33,7 +33,7 @@ class Recorder:
         self.filenames = []
         self.width = 1224
         self.height = 1024
-        self.fps = 100
+        self.fps = 30
 
         # Initialize the camera system using the U3V interface
         self.cam_system = pytelicam.get_camera_system(int(pytelicam.CameraType.U3v))
@@ -69,11 +69,14 @@ class Recorder:
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set height. {res}")
 
-            """
-            res = self.cam_devices[i].cam_control.set_acquisition_frame_rate(self.fps)  # Get the frame rate of the camera
+            res = self.cam_devices[i].cam_control.set_acquisition_frame_rate_control(pytelicam.pytelicam.CameraAcqFrameRateCtrl.Manual)
             if res != pytelicam.CamApiStatus.Success:
-                raise Exception(f"Can't get fps. {res}")
-            """
+                raise Exception(f"Can't set cam ctrl. {res}")
+
+            res = self.cam_devices[i].cam_control.set_acquisition_frame_rate(self.fps)  # set the frame rate of the camera
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set aquisition fps. Camera {i} |||| {res}")
+
 
             device.cam_stream.open(self.receive_signals[i])  # Open the camera stream
             device.cam_stream.start()  # Start the camera stream
