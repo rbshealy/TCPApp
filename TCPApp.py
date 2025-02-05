@@ -44,7 +44,9 @@ class Recorder:
         if self.cam_num == 0:  # Check if no cameras are found
             print("No cameras found. Exiting application.")  # Print an error message
             sys.exit()  # Exit the application gracefully
-        
+        else:
+            print(f"Detected {self.cam_num} camera(s)")
+
         # Create device objects and signal objects for each camera
         for i in range(self.cam_num):
             self.cam_devices.append(self.cam_system.create_device_object(i))
@@ -53,11 +55,6 @@ class Recorder:
         # Open each camera device and configure it
         for i,device in enumerate(self.cam_devices):
             device.open()  # Open the camera device
-
-            """
-            _, mi, ma, __ = device.cam_control.get_width_min_max()
-            print((mi, ma))
-            """
 
             res = device.cam_control.set_trigger_mode(False)  # Disable hardware trigger mode for continuous acquisition
             if res != pytelicam.CamApiStatus.Success:
@@ -75,20 +72,31 @@ class Recorder:
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set cam ctrl. {res}")
 
+            res = self.cam_devices[i].cam_control.set_acquisition_frame_rate(self.fps)  # set the frame rate of the camera
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set aquisition fps. Camera {i} | {res}")
+
             #debug stuff
             res, mode = self.cam_devices[i].cam_control.get_acquisition_frame_rate_control()
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set cam ctrl. {res}")
-            print(mode)
-
-            res = self.cam_devices[i].cam_control.set_acquisition_frame_rate(self.fps)  # set the frame rate of the camera
-            if res != pytelicam.CamApiStatus.Success:
-                raise Exception(f"Can't set aquisition fps. Camera {i} |||| {res}")
+            print(mode) #debugging
 
             res,fps = self.cam_devices[i].cam_control.get_acquisition_frame_rate()  # set the frame rate of the camera
             if res != pytelicam.CamApiStatus.Success:
-                raise Exception(f"Can't set aquisition fps. Camera {i} |||| {res}")
-            print(fps)
+                raise Exception(f"Can't set aquisition fps. Camera {i} | {res}")
+            print(fps) #debugging
+            #end debug
+
+            res = self.cam_devices[i].cam_control.set_gain_auto(
+                pytelicam.CameraBalanceWhiteAuto.Auto)
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set gain auto setting. Camera {i} | {res}")
+
+            res = self.cam_devices[i].cam_control.set_white_balance_auto(
+                pytelicam.CameraBalanceWhiteAuto.Once)
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set white balance auto setting. Camera {i} | {res}")
 
             device.cam_stream.open(self.receive_signals[i])  # Open the camera stream
             device.cam_stream.start()  # Start the camera stream
@@ -161,7 +169,7 @@ class Recorder:
     def _capture_frames(self):
         # Capture frames from the cameras while recording
         while self.recording and not self.stop_event.is_set():
-            for i in range(self.cam_num):
+            for i, window in enumerate(self.display_windows):
                 res = self.cam_system.wait_for_signal(self.receive_signals[i])  # Wait for a signal from the camera
                 if res == pytelicam.CamApiStatus.Success:
                     with self.cam_devices[i].cam_stream.get_current_buffered_image() as image_data:
