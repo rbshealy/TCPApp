@@ -35,6 +35,9 @@ class Recorder:
         self.width = 1224
         self.height = 1024
         self.fps = 25
+        self.dB = 19.5
+        self.xOffset = int(float(self.width) / 2.0)
+        self.yOffset = int(float(self.height) / 2.0)
 
         # Initialize the camera system using the U3V interface
         self.cam_system = pytelicam.get_camera_system(int(pytelicam.CameraType.U3v))
@@ -88,12 +91,19 @@ class Recorder:
             print(fps) #debugging
             #end debug
 
-            res = self.cam_devices[i].cam_control.set_gain_auto(
-                pytelicam.CameraBalanceWhiteAuto.Auto)
+            res = self.cam_devices[i].cam_control.set_offset_x(self.xOffset)
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set xoffset setting. Camera {i} | {res}")
+
+            res = self.cam_devices[i].cam_control.set_offset_y(self.yOffset)
+            if res != pytelicam.CamApiStatus.Success:
+                raise Exception(f"Can't set yoffset setting. Camera {i} | {res}")
+
+            res = self.cam_devices[i].cam_control.set_gain(self.dB)
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set gain auto setting. Camera {i} | {res}")
 
-            res = self.cam_devices[i].cam_control.set_white_balance_auto(
+            res = self.cam_devices[i].cam_control.set_balance_white_auto(
                 pytelicam.CameraBalanceWhiteAuto.Once)
             if res != pytelicam.CamApiStatus.Success:
                 raise Exception(f"Can't set white balance auto setting. Camera {i} | {res}")
